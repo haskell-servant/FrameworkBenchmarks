@@ -4,8 +4,11 @@
     "default": {
       "setup_file": "setup",
       "json_url": "/json",
+      "db_url": "/db",
+      "query_url": "/queries?queries=",
+      "fortune_url": "/fortune",
       "plaintext_url": "/plaintext",
-      "port": 8000,
+      "port": 7041,
       "approach": "Realistic",
       "classification": "Micro",
       "database": "None",

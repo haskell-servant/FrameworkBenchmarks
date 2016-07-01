@@ -6,7 +6,7 @@ import ServantBench
 import Hasql.Connection (settings)
 
 main :: IO ()
-main = run 7000 dbSettings
+main = run 7041 dbSettings
 
 dbSettings :: ByteString
 dbSettings
