@@ -1,0 +1,24 @@
+{
+  "framework": "servant",
+  "tests": [{
+    "default": {
+      "setup_file": "setup",
+      "json_url": "/json",
+      "plaintext_url": "/plaintext",
+      "port": 8000,
+      "approach": "Realistic",
+      "classification": "Micro",
+      "database": "None",
+      "framework": "servant",
+      "language": "Haskell",
+      "orm": "Raw",
+      "platform": "Wai",
+      "webserver": "Warp",
+      "os": "Linux",
+      "database_os": "Linux",
+      "display_name": "servant",
+      "notes": "",
+      "versus": ""
+    }
+  }]
+}
