@@ -1,33 +1,69 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeOperators         #-}
 module ServantBench (run) where
 
-import Data.Aeson hiding (json)
-import Data.ByteString.Lazy
-import GHC.Exts (IsList(fromList))
-import Servant
+import           Control.Exception        (bracket)
+import           Control.Monad            (replicateM)
+import           Control.Monad.IO.Class   (liftIO)
+import           Data.Aeson               hiding (json)
+import qualified Data.ByteString          as BS
+import           Data.ByteString.Lazy
+import           Data.Int                 (Int64)
+import           Data.Maybe               (fromMaybe)
+import           Data.Monoid              ((<>))
+import           GHC.Exts                 (IsList (fromList))
+import           GHC.Generics             (Generic)
+import qualified Hasql.Decoders           as HasqlDec
+import qualified Hasql.Encoders           as HasqlEnc
+import           Hasql.Pool               (Pool, acquire, release, use)
+import qualified Hasql.Query              as Hasql
+import           Hasql.Session            (query)
 import qualified Network.Wai.Handler.Warp as Warp
+import           Servant
+import           System.Random.MWC
 
 type API =
        "json" :> Get '[JSON] Value
+  :<|> "db" :> Get '[JSON] World
+  :<|> "queries" :> QueryParam "queries" Int :> Get '[JSON] [World]
   :<|> "plaintext" :> Get '[PlainText] ByteString
 
 api :: Proxy API
 api = Proxy
 
-server :: Server API
-server =
+server :: Pool -> GenIO -> Server API
+server pool gen =
       json
+ :<|> singleDb pool gen
+ :<|> multipleDb pool gen
  :<|> plaintext
 
-run :: Warp.Port -> IO ()
-run p = Warp.run p $ serve api server
+run :: Warp.Port -> BS.ByteString -> IO ()
+run port dbSettings = do
+  gen <- createSystemRandom
+  bracket (acquire settings) release $ \pool ->
+    Warp.run port $ serve api $ server pool gen
+  where
+    halfSecond = 0.5
+    settings = (30, halfSecond, dbSettings)
 
 instance MimeRender PlainText ByteString where
   mimeRender _ = id
   {-# INLINE mimeRender #-}
+
+data World = World { wId :: !Int64 , wRandomNumber :: !Int64 }
+  deriving (Show, Generic)
+
+instance ToJSON World where
+    toEncoding w =
+        pairs (  "id"            .= wId w
+              <> "randomNumber"  .= wRandomNumber w
+              )
+
 
 
 -- * Test 1: JSON serialization
@@ -35,6 +71,36 @@ instance MimeRender PlainText ByteString where
 json :: Handler Value
 json = return . Object $ fromList [("message", "Hello, World!")]
 {-# INLINE json #-}
+
+-- * Test 2: Single database query
+
+
+selectSingle :: Hasql.Query Int64 World
+selectSingle = Hasql.statement q encoder decoder True
+  where
+   q = "SELECT (id, randomNumber) FROM World WHERE id == $1"
+   encoder = HasqlEnc.value HasqlEnc.int8
+   decoder = HasqlDec.singleRow $ World <$> HasqlDec.value HasqlDec.int8
+                                        <*> HasqlDec.value HasqlDec.int8
+{-# INLINE selectSingle #-}
+
+singleDb :: Pool -> GenIO -> Handler World
+singleDb pool gen = do
+  v <- liftIO $ uniform gen
+  r <- liftIO $ use pool (query v selectSingle)
+  case r of
+    Left e -> throwError err500
+    Right world -> return world
+{-# INLINE singleDb #-}
+
+-- * Test 3: Multiple database query
+
+multipleDb :: Pool -> GenIO -> Maybe Int -> Handler [World]
+multipleDb pool gen mcount = replicateM count $ singleDb pool gen
+  where
+    count = let c = fromMaybe 500 mcount in if c < 0 || c > 500 then 500 else c
+{-# INLINE multipleDb #-}
+
 
 -- * Test 6: Plaintext endpoint
 
