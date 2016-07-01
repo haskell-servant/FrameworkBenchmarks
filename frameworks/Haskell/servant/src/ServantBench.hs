@@ -105,7 +105,7 @@ singleDb pool gen = do
   v <- liftIO $ uniformR (1, 10000) gen
   r <- liftIO $ use pool (query v selectSingle)
   case r of
-    Left e -> liftIO (print e) >> throwError err500
+    Left e -> throwError err500
     Right world -> return world
 {-# INLINE singleDb #-}
 
@@ -115,7 +115,7 @@ singleDb pool gen = do
 multipleDb :: Pool -> GenIO -> Maybe Int -> Handler [World]
 multipleDb pool gen mcount = replicateM count $ singleDb pool gen
   where
-    count = let c = fromMaybe 500 mcount in if c < 0 || c > 500 then 500 else c
+    count = let c = fromMaybe 1 mcount in max 1 (min c 500)
 {-# INLINE multipleDb #-}
 
 
@@ -124,7 +124,7 @@ multipleDb pool gen mcount = replicateM count $ singleDb pool gen
 selectFortunes :: Hasql.Query () [Fortune]
 selectFortunes = Hasql.statement q encoder decoder True
   where
-   q = "SELECT (id, message) FROM Fortune"
+   q = "SELECT * FROM Fortune"
    encoder = HasqlEnc.unit
    -- TODO: investigate whether 'rowsList' is worth the more expensive 'cons'.
    decoder = HasqlDec.rowsList $ Fortune <$> HasqlDec.value HasqlDec.int4
