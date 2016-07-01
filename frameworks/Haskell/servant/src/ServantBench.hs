@@ -12,7 +12,7 @@ import           Control.Monad.IO.Class   (liftIO)
 import           Data.Aeson               hiding (json)
 import qualified Data.ByteString          as BS
 import           Data.ByteString.Lazy
-import           Data.Int                 (Int64)
+import           Data.Int                 (Int32)
 import           Data.Maybe               (fromMaybe)
 import           Data.Monoid              ((<>))
 import qualified Data.Text                as Text
@@ -27,7 +27,7 @@ import           Lucid
 import qualified Network.Wai.Handler.Warp as Warp
 import           Servant
 import           Servant.HTML.Lucid       (HTML)
-import           System.Random.MWC        (GenIO, createSystemRandom, uniform)
+import           System.Random.MWC        (GenIO, createSystemRandom, uniformR)
 
 type API =
        "json" :> Get '[JSON] Value
@@ -60,7 +60,7 @@ instance MimeRender PlainText ByteString where
   mimeRender _ = id
   {-# INLINE mimeRender #-}
 
-data World = World { wId :: !Int64 , wRandomNumber :: !Int64 }
+data World = World { wId :: !Int32 , wRandomNumber :: !Int32 }
   deriving (Show, Generic)
 
 instance ToJSON World where
@@ -69,7 +69,7 @@ instance ToJSON World where
           <> "randomNumber" .= wRandomNumber w
           )
 
-data Fortune = Fortune { fId :: !Int64 , fMessage :: Text.Text }
+data Fortune = Fortune { fId :: !Int32 , fMessage :: Text.Text }
   deriving (Show, Generic)
 
 instance ToJSON Fortune where
@@ -91,21 +91,21 @@ json = return . Object $ fromList [("message", "Hello, World!")]
 -- * Test 2: Single database query
 
 
-selectSingle :: Hasql.Query Int64 World
+selectSingle :: Hasql.Query Int32 World
 selectSingle = Hasql.statement q encoder decoder True
   where
-   q = "SELECT (id, randomNumber) FROM World WHERE id == $1"
-   encoder = HasqlEnc.value HasqlEnc.int8
-   decoder = HasqlDec.singleRow $ World <$> HasqlDec.value HasqlDec.int8
-                                        <*> HasqlDec.value HasqlDec.int8
+   q = "SELECT * FROM World WHERE (id = $1)"
+   encoder = HasqlEnc.value HasqlEnc.int4
+   decoder = HasqlDec.singleRow $ World <$> HasqlDec.value HasqlDec.int4
+                                        <*> HasqlDec.value HasqlDec.int4
 {-# INLINE selectSingle #-}
 
 singleDb :: Pool -> GenIO -> Handler World
 singleDb pool gen = do
-  v <- liftIO $ uniform gen
+  v <- liftIO $ uniformR (1, 10000) gen
   r <- liftIO $ use pool (query v selectSingle)
   case r of
-    Left e -> throwError err500
+    Left e -> liftIO (print e) >> throwError err500
     Right world -> return world
 {-# INLINE singleDb #-}
 
@@ -127,7 +127,7 @@ selectFortunes = Hasql.statement q encoder decoder True
    q = "SELECT (id, message) FROM Fortune"
    encoder = HasqlEnc.unit
    -- TODO: investigate whether 'rowsList' is worth the more expensive 'cons'.
-   decoder = HasqlDec.rowsList $ Fortune <$> HasqlDec.value HasqlDec.int8
+   decoder = HasqlDec.rowsList $ Fortune <$> HasqlDec.value HasqlDec.int4
                                          <*> HasqlDec.value HasqlDec.text
 {-# INLINE selectFortunes #-}
 
