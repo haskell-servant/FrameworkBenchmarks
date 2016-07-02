@@ -33,7 +33,7 @@ type API =
        "json" :> Get '[JSON] Value
   :<|> "db" :> Get '[JSON] World
   :<|> "queries" :> QueryParam "queries" Int :> Get '[JSON] [World]
-  :<|> "fortunes" :> Get '[HTML] (Html ())
+  :<|> "fortune" :> Get '[HTML] (Html ())
   :<|> "plaintext" :> Get '[PlainText] ByteString
 
 api :: Proxy API
@@ -89,7 +89,6 @@ json = return . Object $ fromList [("message", "Hello, World!")]
 
 
 -- * Test 2: Single database query
-
 
 selectSingle :: Hasql.Query Int32 World
 selectSingle = Hasql.statement q encoder decoder True
