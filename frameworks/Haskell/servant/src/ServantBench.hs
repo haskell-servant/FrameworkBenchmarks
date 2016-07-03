@@ -15,6 +15,7 @@ import           Data.ByteString.Lazy
 import           Data.Int                 (Int32)
 import           Data.Maybe               (fromMaybe)
 import           Data.Monoid              ((<>))
+import           Data.List                (sortOn)
 import qualified Data.Text                as Text
 import           GHC.Exts                 (IsList (fromList))
 import           GHC.Generics             (Generic)
@@ -136,6 +137,7 @@ fortunes pool = do
   case r of
     Left e -> throwError err500
     Right fs -> return $ do
+      let new = Fortune 0 "Additional fortune added at request time."
       html_ $ do
         body_$ do
           table_ $ do
@@ -144,7 +146,7 @@ fortunes pool = do
               th_ "message"
             mapM_ (\f -> tr_ $ do
               td_ (p_ . toHtml . show $ fId f)
-              td_ (p_ . toHtml $ fMessage f)) fs
+              td_ (p_ . toHtml $ fMessage f)) (sortOn fMessage (new : fs))
 {-# INLINE fortunes #-}
 
 
