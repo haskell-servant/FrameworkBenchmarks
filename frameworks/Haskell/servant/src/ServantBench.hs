@@ -151,8 +151,8 @@ fortunes pool = do
               th_ "id"
               th_ "message"
             mapM_ (\f -> tr_ $ do
-              td_ (p_ . toHtml . show $ fId f)
-              td_ (p_ . toHtml $ fMessage f)) (sortOn fMessage (new : fs))
+              td_ (toHtml . show $ fId f)
+              td_ (toHtml $ fMessage f)) (sortOn fMessage (new : fs))
 {-# INLINE fortunes #-}
 
 
