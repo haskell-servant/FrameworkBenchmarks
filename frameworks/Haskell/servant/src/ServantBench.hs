@@ -6,35 +6,38 @@
 {-# LANGUAGE TypeOperators         #-}
 module ServantBench (run) where
 
-import           Control.Exception        (bracket)
-import           Control.Monad            (replicateM)
-import           Control.Monad.IO.Class   (liftIO)
-import           Data.Aeson               hiding (json)
-import qualified Data.ByteString          as BS
+import           Control.Exception          (bracket)
+import           Control.Monad              (replicateM)
+import           Control.Monad.IO.Class     (liftIO)
+import           Data.Aeson                 hiding (json)
+import qualified Data.ByteString            as BS
 import           Data.ByteString.Lazy
-import           Data.Int                 (Int32)
-import           Data.Maybe               (fromMaybe)
-import           Data.Monoid              ((<>))
-import           Data.List                (sortOn)
-import qualified Data.Text                as Text
-import           GHC.Exts                 (IsList (fromList))
-import           GHC.Generics             (Generic)
-import qualified Hasql.Decoders           as HasqlDec
-import qualified Hasql.Encoders           as HasqlEnc
-import           Hasql.Pool               (Pool, acquire, release, use)
-import qualified Hasql.Query              as Hasql
-import           Hasql.Session            (query)
+import           Data.Functor.Contravariant (contramap)
+import           Data.Int                   (Int32)
+import           Data.List                  (sortOn)
+import           Data.Maybe                 (fromMaybe)
+import           Data.Monoid                ((<>))
+import qualified Data.Text                  as Text
+import           GHC.Exts                   (IsList (fromList))
+import           GHC.Generics               (Generic)
+import qualified Hasql.Decoders             as HasqlDec
+import qualified Hasql.Encoders             as HasqlEnc
+import           Hasql.Pool                 (Pool, acquire, release, use)
+import qualified Hasql.Query                as Hasql
+import           Hasql.Session              (query)
 import           Lucid
-import qualified Network.Wai.Handler.Warp as Warp
+import qualified Network.Wai.Handler.Warp   as Warp
 import           Servant
-import           Servant.HTML.Lucid       (HTML)
-import           System.Random.MWC        (GenIO, createSystemRandom, uniformR)
+import           Servant.HTML.Lucid         (HTML)
+import           System.Random.MWC          (GenIO, createSystemRandom,
+                                             uniformR)
 
 type API =
        "json" :> Get '[JSON] Value
   :<|> "db" :> Get '[JSON] World
   :<|> "queries" :> QueryParam "queries" Int :> Get '[JSON] [World]
   :<|> "fortune" :> Get '[HTML] (Html ())
+  {-:<|> "updates" :> QueryParam "queries" Int :> Get '[HTML] (Html ())-}
   :<|> "plaintext" :> Get '[PlainText] ByteString
 
 api :: Proxy API
@@ -46,6 +49,7 @@ server pool gen =
  :<|> singleDb pool gen
  :<|> multipleDb pool gen
  :<|> fortunes pool
+ {-:<|> updates pool-}
  :<|> plaintext
 
 run :: Warp.Port -> BS.ByteString -> IO ()
@@ -79,6 +83,10 @@ instance ToJSON Fortune where
           <> "message" .= fMessage f
           )
 
+intValEnc :: HasqlEnc.Params Int32
+intValEnc = HasqlEnc.value HasqlEnc.int4
+intValDec :: HasqlDec.Row Int32
+intValDec = HasqlDec.value HasqlDec.int4
 
 ------------------------------------------------------------------------------
 
@@ -92,12 +100,10 @@ json = return . Object $ fromList [("message", "Hello, World!")]
 -- * Test 2: Single database query
 
 selectSingle :: Hasql.Query Int32 World
-selectSingle = Hasql.statement q encoder decoder True
+selectSingle = Hasql.statement q intValEnc decoder True
   where
    q = "SELECT * FROM World WHERE (id = $1)"
-   encoder = HasqlEnc.value HasqlEnc.int4
-   decoder = HasqlDec.singleRow $ World <$> HasqlDec.value HasqlDec.int4
-                                        <*> HasqlDec.value HasqlDec.int4
+   decoder = HasqlDec.singleRow $ World <$> intValDec <*> intValDec
 {-# INLINE selectSingle #-}
 
 singleDb :: Pool -> GenIO -> Handler World
@@ -127,8 +133,7 @@ selectFortunes = Hasql.statement q encoder decoder True
    q = "SELECT * FROM Fortune"
    encoder = HasqlEnc.unit
    -- TODO: investigate whether 'rowsList' is worth the more expensive 'cons'.
-   decoder = HasqlDec.rowsList $ Fortune <$> HasqlDec.value HasqlDec.int4
-                                         <*> HasqlDec.value HasqlDec.text
+   decoder = HasqlDec.rowsList $ Fortune <$> intValDec <*> HasqlDec.value HasqlDec.text
 {-# INLINE selectFortunes #-}
 
 fortunes :: Pool -> Handler (Html ())
@@ -138,8 +143,9 @@ fortunes pool = do
     Left e -> throwError err500
     Right fs -> return $ do
       let new = Fortune 0 "Additional fortune added at request time."
-      html_ $ do
-        body_$ do
+      doctypehtml_ $ do
+        head_ $ title_ "Fortunes"
+        body_ $ do
           table_ $ do
             tr_ $ do
               th_ "id"
@@ -149,6 +155,22 @@ fortunes pool = do
               td_ (p_ . toHtml $ fMessage f)) (sortOn fMessage (new : fs))
 {-# INLINE fortunes #-}
 
+
+-- * Test 5: Updates
+
+updateSingle :: Hasql.Query Int32 World
+updateSingle = Hasql.statement q intValEnc decoder True
+  where
+    q = "UPDATE World SET randomNumber = $1 WHERE id = $2"
+    encoder = contramap fst intValEnc <> contramap snd intValEnc
+    decoder = HasqlDec.singleRow $ World <$> intValDec <*> intValDec
+{-# INLINE updateSingle #-}
+
+{-updates :: Maybe Int -> Handler [World]-}
+{-updates mcount =-}
+  {-where-}
+    {-count = let c = fromMaybe 1 mcount in max 1 (min c 500)-}
+{-[># INLINE updates #<]-}
 
 -- * Test 6: Plaintext endpoint
 
