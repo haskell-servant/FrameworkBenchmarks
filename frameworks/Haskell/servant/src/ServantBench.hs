@@ -37,7 +37,7 @@ type API =
   :<|> "db" :> Get '[JSON] World
   :<|> "queries" :> QueryParam "queries" Int :> Get '[JSON] [World]
   :<|> "fortune" :> Get '[HTML] (Html ())
-  {-:<|> "updates" :> QueryParam "queries" Int :> Get '[HTML] (Html ())-}
+  :<|> "updates" :> QueryParam "queries" Int :> Get '[JSON] [World]
   :<|> "plaintext" :> Get '[PlainText] ByteString
 
 api :: Proxy API
@@ -49,7 +49,7 @@ server pool gen =
  :<|> singleDb pool gen
  :<|> multipleDb pool gen
  :<|> fortunes pool
- {-:<|> updates pool-}
+ :<|> updates pool gen
  :<|> plaintext
 
 run :: Warp.Port -> BS.ByteString -> IO ()
@@ -158,19 +158,23 @@ fortunes pool = do
 
 -- * Test 5: Updates
 
-updateSingle :: Hasql.Query Int32 World
-updateSingle = Hasql.statement q intValEnc decoder True
+updateSingle :: Hasql.Query (Int32, Int32) World
+updateSingle = Hasql.statement q encoder decoder True
   where
     q = "UPDATE World SET randomNumber = $1 WHERE id = $2"
     encoder = contramap fst intValEnc <> contramap snd intValEnc
     decoder = HasqlDec.singleRow $ World <$> intValDec <*> intValDec
 {-# INLINE updateSingle #-}
 
-{-updates :: Maybe Int -> Handler [World]-}
-{-updates mcount =-}
-  {-where-}
-    {-count = let c = fromMaybe 1 mcount in max 1 (min c 500)-}
-{-[># INLINE updates #<]-}
+updates :: Pool -> GenIO -> Maybe Int -> Handler [World]
+updates pool gen mcount = replicateM count $ do
+  res <- singleDb pool gen
+  v <- liftIO $ uniformR (1, 10000) gen
+  r <- liftIO $ use pool (query (wId res, v) updateSingle)
+  return $ res { wRandomNumber = v }
+  where
+    count = let c = fromMaybe 1 mcount in max 1 (min c 500)
+{-# INLINE updates #-}
 
 -- * Test 6: Plaintext endpoint
 

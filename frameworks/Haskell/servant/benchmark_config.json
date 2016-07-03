@@ -7,6 +7,7 @@
       "db_url": "/db",
       "query_url": "/queries?queries=",
       "fortune_url": "/fortune",
+      "update_url": "/updates?queries=",
       "plaintext_url": "/plaintext",
       "port": 7041,
       "approach": "Realistic",
